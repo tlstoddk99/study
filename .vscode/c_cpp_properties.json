@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/a/mpc_homework/include/**", // Include directory
+                "/usr/include/matplotlib-cpp", // matplotlib-cpp include directory
+                "/usr/include/python3.8" // Python include directory
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++", // Make sure to use g++ for C++ files
+            "cStandard": "c17",
+            "cppStandard": "gnu++17", // Updated to C++17 as it is required by matplotlib-cpp
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,81 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 시스템 매개변수 정의
+A = np.array([[0.9048, 0], [0.0952, 1]])
+B = np.array([[0.0952], [0.0048]])
+C = np.array([[0, 1]])
+
+# 예측 지평과 제어 지평
+Np = 10
+Nc = 4
+
+# 제어 가중치 행렬
+R = 0.1 * np.eye(Nc)
+
+# 참조 신호
+r = 2 * np.ones((Np, 1))
+
+# 초기 상태
+x0 = np.array([[0], [0]])
+u0 = 0
+
+
+# 예측 모델 생성
+def get_prediction_matrices(A, B, C, Np, Nc):
+    F = np.vstack([C @ np.linalg.matrix_power(A, i) for i in range(1, Np + 1)])
+    Phi = np.zeros((Np, Nc))
+    for i in range(Np):
+        for j in range(Nc):
+            if i >= j:
+                Phi[i, j] = (C @ np.linalg.matrix_power(A, i - j) @ B).item()
+    return F, Phi
+
+
+# 시뮬레이션 수행
+x = x0
+u_k = u0
+x_list = []
+y_list = []
+u_list = []
+
+
+for k in range(Np):
+    F, Phi = get_prediction_matrices(A, B, C, Np, Nc)
+
+    # 제어 입력 계산
+    delta_U = np.linalg.inv(Phi.T @ Phi + R) @ Phi.T @ (r - F @ x).flatten()
+
+    # 첫 번째 제어 입력 사용
+    u_k = u_k + delta_U[0]
+
+    # 상태 업데이트
+    x = A @ x + B * u_k
+
+    # 기록 저장
+    x_list.append(x)
+    y_list.append(C @ x)
+    u_list.append(u_k)
+
+print("x_list: ", x_list)
+print("y: ", y_list)
+print("u_seq: ", u_list)
+
+# 결과 플로팅
+x_val_1 = [x[0].item() for x in x_list]
+x_val_2 = [x[1].item() for x in x_list]
+u_val = [u.item() for u in u_list]
+y_val = [y.item() for y in y_list]
+
+plt.figure()
+plt.subplot(2, 1, 1)
+plt.plot(x_val_1, label="x1")
+plt.plot(x_val_2, label="x2")
+plt.legend()
+plt.subplot(2, 1, 2)
+# plt.plot(u_val, label="u")
+plt.plot(y_val, label="y")
+plt.legend()
+
+
+plt.show()

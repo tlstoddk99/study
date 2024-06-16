@@ -1,0 +1,200 @@
+#include <eigen3/Eigen/Dense>
+#include <math.h>
+#include <random>
+#include <iostream>
+#include <vector>
+#include "matplotlibcpp.h"
+
+namespace plt = matplotlibcpp;
+
+class DiscreteTimeKalmanFilter
+{
+public:
+    Eigen::MatrixXd A;     // 상태 전이 행렬
+    Eigen::VectorXd x_hat; // 상태 추정값
+    Eigen::MatrixXd B;     // 제어 입력 행렬
+    Eigen::VectorXd u;     // 제어 입력
+    Eigen::MatrixXd G;     // 프로세스 노이즈 가중치 행렬
+    Eigen::VectorXd w;     // 프로세스 노이즈
+
+    Eigen::MatrixXd P; // 오차 공분산 행렬
+    Eigen::MatrixXd H; // 측정 행렬
+    Eigen::MatrixXd Q; // 프로세스 노이즈 공분산 행렬
+    Eigen::MatrixXd R; // 측정 노이즈 공분산 행렬
+    Eigen::MatrixXd K; // 칼만 게인
+
+    Eigen::VectorXd z; // 측정값
+
+    double dt; // 시간 간격, 이산시간 칼만 필터에서는 일정한 시간 간격을 가정하기 때문에 사용되지않음.
+
+    // DiscreteTimeKalmanFilter(Eigen::VectorXd x_0, Eigen::MatrixXd P_0,
+    //                          Eigen::MatrixXd A_, Eigen::MatrixXd B_,
+    //                          Eigen::MatrixXd H_, Eigen::MatrixXd Q_,
+    //                          Eigen::MatrixXd R_, Eigen::VectorXd u_,
+    //                          Eigen::MatrixXd G, const double dt_)
+    //     : x_hat(x_0),
+    //       P(P_0),
+    //       A(A_),
+    //       B(B_),
+    //       H(H_),
+    //       Q(Q_),
+    //       R(R_),
+    //       u(u_),
+    //       G(G),
+    //       dt(dt_)
+    // {
+    // }
+
+    DiscreteTimeKalmanFilter()
+    {
+    }
+
+    void predict(Eigen::MatrixXd &P, Eigen::VectorXd &x_hat, Eigen::VectorXd u, Eigen::MatrixXd A, Eigen::MatrixXd B, Eigen::MatrixXd G, Eigen::MatrixXd Q)
+    {
+        P = A * P * A.transpose() + G * Q * G.transpose();
+        x_hat = A * x_hat + B * u;
+    }
+
+    void update(Eigen::MatrixXd &P, Eigen::VectorXd &x_hat, Eigen::VectorXd z, Eigen::MatrixXd H, Eigen::MatrixXd R)
+    {
+        K = P * H.transpose() * (H * P * H.transpose() + R).inverse(); // To do:check dimension
+        P = (Eigen::MatrixXd::Identity(x_hat.size(), x_hat.size()) - K * H) * P;
+        x_hat = x_hat + K * (z - H * x_hat);
+    }
+};
+
+class SystemModel
+{
+public:
+    const double dt; // 시간 간격
+
+    Eigen::MatrixXd A; // 상태 전이 행렬
+    Eigen::VectorXd x; // 상태 벡터
+    Eigen::MatrixXd B; // 제어 입력 행렬
+    Eigen::VectorXd u; // 제어 입력
+
+    Eigen::MatrixXd G; // 프로세스 노이즈 가중치 행렬
+    Eigen::VectorXd w; // 프로세스 노이즈
+
+    Eigen::VectorXd z; // 측정값
+    Eigen::MatrixXd H; // 측정 가능 행렬
+    Eigen::VectorXd v; // 측정 노이즈
+
+    SystemModel(Eigen::MatrixXd A_, Eigen::MatrixXd B_, Eigen::MatrixXd G_, Eigen::MatrixXd H_, double dt_)
+        : A(A_),
+          B(B_),
+          G(G_),
+          H(H_),
+          dt(dt_)
+    {
+        w = Eigen::VectorXd::Zero(G.cols());
+        v = Eigen::VectorXd::Zero(H.rows());
+    }
+
+    void true_state_update(Eigen::VectorXd &x, Eigen::VectorXd u)
+    {
+        x = A * x + B * u;
+    }
+
+    void add_process_error(Eigen::VectorXd &x, Eigen::VectorXd u)
+    {
+        generate_noise(w, 0, 1);
+        x = x + G * w;
+    }
+
+    void measurement(Eigen::VectorXd &z, Eigen::VectorXd x)
+    {   
+        
+        generate_noise(v, 0, 1);
+        z = H * x + v;
+    }
+
+    void generate_noise(Eigen::VectorXd &x, double mean, double std_dev)
+    {
+        std::default_random_engine generator;
+        std::normal_distribution<double> distribution(mean, std_dev);
+
+        for (int i = 0; i < x.size(); ++i)
+        {
+            x(i) = distribution(generator); // += 대신 = 사용
+        }
+    }
+};
+
+int main()
+{
+    double dt = 1;
+    double sim_time = 10;
+
+    Eigen::MatrixXd A(2, 2);
+    A << 1, 1,
+        0, 1;
+
+    Eigen::VectorXd x(2);
+    x << 100, 0;
+
+    Eigen::MatrixXd B(2, 1);
+    B << 0.5,
+        1;
+
+    Eigen::VectorXd u(1);
+    u << -9.81;
+
+    Eigen::MatrixXd G(2, 2);
+    G << 0.5, 0,
+        0, 0.5;
+
+    Eigen::VectorXd z(1);
+    z << 0;
+
+    Eigen::MatrixXd H(1, 2);
+    H << 1, 0;
+
+    Eigen::VectorXd x_hat(2);
+    x_hat << 60, 0;
+
+    Eigen::MatrixXd P(2, 2);
+    P << 1, 0,
+        0, 1;
+
+    Eigen::MatrixXd Q(2, 2);
+    Q << 0.01, 0.01,
+        0.01, 0.02;
+
+    Eigen::MatrixXd R(1, 1);
+    R << 0.02;
+
+    DiscreteTimeKalmanFilter kf;
+    SystemModel sys(A, B, G, H, dt);
+
+    std::vector<double> true_state_vector;
+    std::vector<double> predict_state_vector;
+    std::vector<double> measured_state_vector;
+    std::vector<double> time_steps;
+
+    for (int i = 0; i < int(sim_time / dt); ++i)
+    {
+        sys.true_state_update(x, u);
+        true_state_vector.push_back(x(0));
+        sys.add_process_error(x, u);
+
+        sys.measurement(z, x);
+        measured_state_vector.push_back(z(0));
+        std::cout << z << '\n';
+
+        
+        kf.predict(P, x_hat, u, A, B, G, Q);
+        kf.update(P, x_hat, z, H, R);
+        predict_state_vector.push_back(kf.x_hat(0));
+
+        time_steps.push_back(i * dt);
+    }
+
+    plt::plot(time_steps, true_state_vector, "r");
+    plt::plot(time_steps, measured_state_vector, "g");
+    plt::plot(time_steps, predict_state_vector, "b");
+    plt::show();
+
+    return 0;
+}
+
