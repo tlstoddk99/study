@@ -21,7 +21,7 @@ f = lambda x, u: vertcat(
     x[3] * cos(x[2]),    # dx/dt = v * cos(yaw)
     x[3] * sin(x[2]),    # dy/dt = v * sin(yaw)
     u[1],                # dyaw/dt = steering
-    u[0] - x[3]          # dv/dt = throttle - v (감속 포함)
+    u[0]          # dv/dt = throttle (감속 포함)
 )
 
 dt = T / N  # 제어 구간의 길이
@@ -35,19 +35,22 @@ for k in range(N):  # 제어 구간을 따라 반복
     opti.subject_to(X[:, k+1] == x_next)  # 연속성 제약 조건
 
 # ---- 경로 제약 조건 -----------
-track_width = 1.0  # 트랙 폭 (단순화된 모델)
+track_width = 4.0  # 트랙 폭 (단순화된 모델)
 opti.subject_to(p_y <= track_width / 2)  # 트랙 상단 경계
 opti.subject_to(p_y >= -track_width / 2)  # 트랙 하단 경계
 opti.subject_to(opti.bounded(0, U[0, :], 1))  # 스로틀 제어 변수 제한
-opti.subject_to(opti.bounded(-1, U[1, :], 1))  # 스티어링 제어 변수 제한
+opti.subject_to(opti.bounded(-0.4, U[1, :], 0.4))  # 스티어링 제어 변수 제한
 
 # ---- 경계 조건 --------
-opti.subject_to(p_x[0] == 0)   # 시작 x 위치 0
-opti.subject_to(p_y[0] == 0)   # 시작 y 위치 0
-opti.subject_to(yaw[0] == 0)   # 시작 yaw 0
-opti.subject_to(v[0] == 0)     # 정지 상태에서 시작
-opti.subject_to(p_x[-1] == 3)  # 목표 x 위치 3
-opti.subject_to(p_y[-1] == 0)  # 목표 y 위치 0
+opti.subject_to(p_x[0] == 0)   # 시작 x 위치 
+opti.subject_to(p_y[0] == 0)   # 시작 y 위치 
+opti.subject_to(yaw[0] == 0)   # 시작 yaw 
+opti.subject_to(v[0] == 0)     # 시작 속도
+
+opti.subject_to(p_y[10] <= 1.5)
+
+opti.subject_to(p_x[-1] == 3)  # 목표 x 위치 
+opti.subject_to(p_y[-1] == 0)  # 목표 y 위치 
 
 # ---- 기타 제약 조건  ----------
 opti.subject_to(T >= 0)  # 시간은 양수여야 함
