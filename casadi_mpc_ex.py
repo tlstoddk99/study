@@ -5,7 +5,7 @@ import pandas as pd
 
 def main():
     # 데이터 로드
-    N = 100  # 제어 구간의 수
+    N = 200  # 제어 구간의 수
 
     center_w = "/home/a/mpc_homework/map/centerline_waypoints.csv"
     df_1 = pd.read_csv(center_w, sep=",", header=None)
@@ -117,13 +117,31 @@ def main():
 
         return min_dist, min_idx
 
-    # # 경로 제약 조건
-    # for k in range(N + 1):
-    #     distance, idx = closest_idx(p_x[k], p_y[k])
-    #     opti.subject_to(opti.bounded(0, distance, 3))
+    for k in range(N + 1):
+        _, idx = closest_idx(p_x[k], p_y[k])
+
+        # 인덱스를 정수로 변환하지 않고 심볼릭으로 처리
+        idx = ca.floor(idx)
+
+        # 트랙의 좌우 경계 값을 가져옴
+        x_l_bound = ca.mtimes(
+            x_l.T, ca.vertcat(*[ca.if_else(idx == i, 1, 0) for i in range(x_l.size1())])
+        )
+        y_l_bound = ca.mtimes(
+            y_l.T, ca.vertcat(*[ca.if_else(idx == i, 1, 0) for i in range(y_l.size1())])
+        )
+        x_r_bound = ca.mtimes(
+            x_r.T, ca.vertcat(*[ca.if_else(idx == i, 1, 0) for i in range(x_r.size1())])
+        )
+        y_r_bound = ca.mtimes(
+            y_r.T, ca.vertcat(*[ca.if_else(idx == i, 1, 0) for i in range(y_r.size1())])
+        )
+
+        # 차량의 위치가 좌우 경계 내에 있도록 제약 조건 추가
+        opti.subject_to(opti.bounded(x_l_bound, p_x[k], x_r_bound))
+        opti.subject_to(opti.bounded(y_l_bound, p_y[k], y_r_bound))
 
     # 경계 조건
-
     opti.subject_to(p_x[0] == x_c[0])  # 초기 위치
     opti.subject_to(p_y[0] == y_c[0])
     opti.subject_to(yaw[0] == 0)  # 초기 각도
@@ -132,10 +150,10 @@ def main():
     opti.subject_to(omega[0] == 0)
     opti.subject_to(theta[0] == 0)
 
-    opti.subject_to(p_x[-1] == x_c[500])  # 최종 위치
-    opti.subject_to(p_y[-1] == y_c[500])
+    opti.subject_to(p_x[-1] == x_c[300])  # 최종 위치
+    opti.subject_to(p_y[-1] == y_c[300])
 
-    opti.subject_to(opti.bounded(0, U[0, :], 5))
+    opti.subject_to(opti.bounded(-3, U[0, :], 5))
     opti.subject_to(opti.bounded(-0.4, U[1, :], 0.4))
     opti.subject_to(T >= 0)
 
@@ -150,7 +168,7 @@ def main():
     opti.set_initial(U[0, :], 0)  # throttle
     opti.set_initial(U[1, :], 0)  # steering
     opti.set_initial(U[2, :], 0)  # theta
-    opti.set_initial(T, 10)  # Time
+    opti.set_initial(T, 1)  # Time
 
     # NLP 문제 풀기
     opti.solver("ipopt")
