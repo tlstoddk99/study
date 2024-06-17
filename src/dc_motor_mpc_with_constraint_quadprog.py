@@ -3,25 +3,15 @@ import matplotlib.pyplot as plt
 from cvxopt import matrix, solvers
 
 # 예측 모델 생성
-def get_prediction_matrices(A_list, B_list, C_list, Np, Nc):
-    F = np.zeros((Np, A_list[0].shape[0]))
-    Phi = np.zeros((Np, Nc * B_list[0].shape[1]))
-
+def get_prediction_matrices(A, B, C, Np, Nc):
+    F = np.vstack([C @ np.linalg.matrix_power(A, i) for i in range(1, Np + 1)])
+    Phi = np.zeros((Np, Nc * B.shape[1]))
     for i in range(Np):
-        C_prod_A = C_list[i]
-        for j in range(1, i + 1):
-            C_prod_A = C_prod_A @ A_list[i - j]
-        F[i, :] = C_prod_A
-
         for j in range(Nc):
             if i >= j:
-                C_prod_A = C_list[i]
-                for k in range(j):
-                    C_prod_A = C_prod_A @ A_list[i - k - 1]
-                Phi[i, j * B_list[0].shape[1] : (j + 1) * B_list[0].shape[1]] = (
-                    C_prod_A @ B_list[i - j]
+                Phi[i, j * B.shape[1] : (j + 1) * B.shape[1]] = (
+                    C @ np.linalg.matrix_power(A, i - j) @ B
                 ).reshape(1, -1)
-
     return F, Phi
 
 def solve_qp(E, F, M, gamma):
@@ -34,8 +24,9 @@ def solve_qp(E, F, M, gamma):
     return x
 
 def get_time_varying_matrices(k):
-    A = np.array([[0.9048 + 0.0001*k, 0], [0.0952 - 0.0001*k, 1]])
-    B = np.array([[0.0952], [0.0048 + 0.0001*k]])
+    # 시간에 따라 변하는 시스템 행렬 정의
+    A = np.array([[0.9048 + 0.001*k, 0], [0.0952 - 0.001*k, 1]])
+    B = np.array([[0.0952], [0.0048 + 0.01*k]])
     C = np.array([[0, 1]])
     return A, B, C
 
@@ -51,7 +42,10 @@ u_k = u0
 Np = 100
 Nc = 10
 R = 1 * np.eye(Nc)
-referenceSignal = 2 * np.ones((Np, 1))
+# referenceSignal = 2 * np.ones((Np, 1))
+Time = np.linspace(0, 2 * np.pi, Np)
+referenceSignal= (0.1*np.sin(10*Time)+1.5).reshape(-1, 1)
+
 
 x_list = []
 y_list = []
@@ -60,31 +54,23 @@ delta_u_list = []
 delta_U = np.array([[0]])
 
 for k in range(100):
-    A_list = []
-    B_list = []
-    C_list = []
-    for i in range(Np):
-        A, B, C = get_time_varying_matrices(k + i)
-        A_list.append(A)
-        B_list.append(B)
-        C_list.append(C)
+    A, B, C = get_time_varying_matrices(k)
+    A_Aug = np.block([[A, np.zeros((2, 1))], [C @ A, np.eye(1)]])
+    B_Aug = np.vstack([B, C @ B])
+    C_Aug = np.hstack([C, np.ones((1, 1))])
     
-    A_Aug = np.block([[A_list[0], np.zeros((2, 1))], [C_list[0] @ A_list[0], np.eye(1)]])
-    B_Aug = np.vstack([B_list[0], C_list[0] @ B_list[0]])
-    C_Aug = np.hstack([C_list[0], np.ones((1, 1))])
-    
-    w = np.array([[0.01*(np.random.normal(0, 1))], [0.01*(np.random.normal(0, 1))]])
+    w = np.array([[0.02*(np.random.normal(0, 1))], [0.04*(np.random.normal(0, 1))]])
     temp_real_x = real_x
     temp_x_hat = x_hat
     temp_x_hat.reshape(-1, 1)
     u_k = u_k + delta_U[0]
 
-    real_x = A_list[0] @ real_x + B_list[0] * u_k + w
+    real_x = A @ real_x + B * u_k + w
 
     delta_x = real_x - temp_real_x
-    x_Aug = np.vstack([delta_x, C_list[0] @ real_x])
+    x_Aug = np.vstack([delta_x, C @ real_x])
 
-    F, Phi = get_prediction_matrices(A_list, B_list, C_list, Np, Nc)
+    F, Phi = get_prediction_matrices(A_Aug, B_Aug, C_Aug, Np, Nc)
     E = Phi.T @ Phi + R
     f = -Phi.T @ (referenceSignal - F @ x_Aug)
 
@@ -111,9 +97,10 @@ u_val = [u.item() for u in u_list]
 y_val = [y.item() for y in y_list]
 delta_u_val = [delta_u.item() for delta_u in delta_u_list]
 
-plt.plot(x_val_1, label="x1")
+# plt.plot(x_val_1, label="x1")
 plt.plot(x_val_2, label="x2")
 plt.plot(y_val, label="y")
+plt.plot(referenceSignal, label="reference")
 plt.legend()
 plt.show()
 
