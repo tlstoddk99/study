@@ -1,19 +1,69 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import quadprog 
+from cvxopt import matrix, solvers
 
 # 예측 모델 생성
 def get_prediction_matrices(A, B, C, Np, Nc):
+    # 예측 행렬 F 계산
     F = np.vstack([C @ np.linalg.matrix_power(A, i) for i in range(1, Np + 1)])
-    Phi = np.zeros((Np, Nc))
+
+    # 제어 행렬 Phi 계산
+    Phi = np.zeros((Np, Nc * B.shape[1]))  # 각 열이 입력 벡터 B의 개별 열에 해당
     for i in range(Np):
         for j in range(Nc):
             if i >= j:
-                Phi[i, j] = (C @ np.linalg.matrix_power(A, i - j) @ B).item()
+                Phi[i, j * B.shape[1] : (j + 1) * B.shape[1]] = (
+                    C @ np.linalg.matrix_power(A, i - j) @ B
+                ).reshape(1, -1)
+
     return F, Phi
 
 
+
+def solve_qp(E, F, M, gamma):
+    """
+    Solves the quadratic programming problem:
+    minimize (1/2)x^T E x + F^T x
+    subject to M x <= gamma
+
+    Parameters:
+    E (numpy.ndarray): The matrix in the quadratic term (must be symmetric and positive semi-definite).
+    F (numpy.ndarray): The matrix in the linear term.
+    M (numpy.ndarray): The matrix in the inequality constraint.
+    gamma (numpy.ndarray): The right-hand side vector in the inequality constraint.
+
+    Returns:
+    numpy.ndarray: The solution vector x.
+    """
+    
+    # Convert numpy arrays to cvxopt matrices
+    P = matrix(E)
+    q = matrix(F)
+    G = matrix(M)
+    h = matrix(gamma)
+    
+    # Solve the QP problem
+    sol = solvers.qp(P, q, G, h)
+    
+    # Extract the solution
+    x = np.array(sol['x']).flatten()
+    
+    return x
+
 def hildreth_qp(E, F, M, gamma, max_iter=1000, tol=1e-6):
+    
+    print("E")
+    print(E)
+    
+    print("F")
+    print(F)
+    
+    print("M")
+    print(M)
+    
+    print("gamma")
+    print(gamma)
 
     # Compute H and K matrices
     E_inv = np.linalg.pinv(E)
@@ -144,15 +194,19 @@ for k in range(100):
 
     real_x = A @ real_x + B * u_k
 
-    z = measure_update(z, real_x, H_k, k_v, R_k)
+    # z = measure_update(z, real_x, H_k, k_v, R_k)
 
-    x_hat, P_k = kalman_predict(A, B, G_k, Q_k, x_hat, P_k, u_k, k_w, 1)
+    # x_hat, P_k = kalman_predict(A, B, G_k, Q_k, x_hat, P_k, u_k, k_w, 1)
 
-    x_hat, P_k, K_k = kalman_update(H_k, R_k, P_k, z, x_hat, K_k)
+    # x_hat, P_k, K_k = kalman_update(H_k, R_k, P_k, z, x_hat, K_k)
 
-    delta_x = x_hat - temp_x_hat
-    # delta_x = real_x - temp_real_x
-    x_Aug = np.vstack([delta_x, C @ x_hat])
+    # delta_x = x_hat - temp_x_hat
+    # x_Aug = np.vstack([delta_x, C @ x_hat])
+    
+    
+    delta_x = real_x - temp_real_x
+    x_Aug = np.vstack([delta_x, C @ real_x])
+    
 
     # 예측 행렬 계산
     F, Phi = get_prediction_matrices(A_Aug, B_Aug, C_Aug, Np, Nc)
@@ -166,7 +220,9 @@ for k in range(100):
     delta_U_min, delta_U_max = -0.1, 0.2
 
     # 제약조건
-    # M = np.vstack((np.ones(Nc), -np.ones(Nc), np.ones(Nc), -np.ones(Nc)))
+    
+    
+    M = np.vstack((np.ones(Nc), -np.ones(Nc), np.ones(Nc), -np.ones(Nc)))
     M = np.zeros((4, Nc))
     M[0, 0] = 1
     M[1, 0] = -1
@@ -176,7 +232,9 @@ for k in range(100):
     gamma = np.array(
         [[U_max - u_k[0]], [-U_min + u_k[0]], [delta_U_max], [-delta_U_min]]
     )
-    delta_U = hildreth_qp(E, f, M, gamma)
+
+    delta_U = solve_qp(E, f, M, gamma)
+
     # 기록 저장
     x_list.append(real_x)
     y_list.append(C_Aug @ x_Aug)

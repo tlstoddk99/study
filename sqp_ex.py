@@ -47,6 +47,8 @@ def solve_qp_quadprog(E, F, M, gamma):
     sol = quadprog.solve_qp(G, a, C, b, meq)
     return sol[0]
 
+
+
 # Example usage
 E = np.array([[2, 0], [0, 2]], dtype=np.double)
 F = np.array([-2, -5], dtype=np.double)
