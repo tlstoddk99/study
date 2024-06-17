@@ -137,7 +137,7 @@ opti.subject_to(omega[0] == 0)  # 시작 yaw rate
 opti.subject_to(p_x[-1] == x_c[-1])  # 목표 x 위치
 opti.subject_to(p_y[-1] == y_c[-1])  # 목표 y 위치
 
-opti.subject_to(opti.bounded(0, U[0, :], 5))  # 스로틀 제어 변수 제한
+opti.subject_to(opti.bounded(-5, U[0, :], 5))  # 스로틀 제어 변수 제한
 opti.subject_to(opti.bounded(-0.4, U[1, :], 0.4))  # 스티어링 제어 변수 제한
 # ---- 기타 제약 조건  ----------
 opti.subject_to(T >= 0)  # 시간은 양수여야 함
@@ -165,7 +165,7 @@ except RuntimeError as e:
 
 # ---- 후처리 ----
 plt.figure()
-# plt.plot(sol.value(p_x), sol.value(p_y), label="trajectory")  # 위치 플롯
+plt.plot(sol.value(p_x), sol.value(p_y), label="trajectory")  # 위치 플롯
 plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
