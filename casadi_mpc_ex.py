@@ -8,7 +8,7 @@ opti = Opti()  # 최적화 문제 설정
 
 # ---- 차량 매개변수 ----
 m = 0.35  # 차량 질량 (kg)
-Iz = 0.47  # 차량 관성 모멘트 (kg*m^2)
+Iz = 0.047  # 차량 관성 모멘트 (kg*m^2)
 lf = 0.15  # 앞 바퀴와 무게 중심 사이 거리 (m)
 lr = 0.17  # 뒷 바퀴와 무게 중심 사이 거리 (m)
 Bf, Cf, Df = 1.5, 1.5, 35.0  # Pacejka 타이어 모델 매개변수
@@ -33,7 +33,7 @@ opti.minimize(T)  # 최소 시간을 목표로 경주
 # ---- 동적 제약 조건 ----
 def vehicle_dynamics(x, u):
     alpha_f = -atan2((x[4] + lf * x[5]), x[3]) + u[1]
-    alpha_r = -atan2((x[4] - lr * x[5]), x[3])
+    alpha_r = atan2((lr * x[5]-x[4]), x[3])
     
     Ff_y = Df * sin(Cf * arctan(Bf * alpha_f))
     Fr_y = Dr * sin(Cr * arctan(Br * alpha_r))
@@ -64,22 +64,23 @@ for k in range(N):  # 제어 구간을 따라 반복
 track_width = 4.0  # 트랙 폭 (단순화된 모델)
 opti.subject_to(p_y <= track_width / 2)  # 트랙 상단 경계
 opti.subject_to(p_y >= -track_width / 2)  # 트랙 하단 경계
-opti.subject_to(opti.bounded(0, U[0, :], 1))  # 스로틀 제어 변수 제한
+opti.subject_to(opti.bounded(0, U[0, :], 5))  # 스로틀 제어 변수 제한
 opti.subject_to(opti.bounded(-0.4, U[1, :], 0.4))  # 스티어링 제어 변수 제한
 
 # ---- 경계 조건 --------
 opti.subject_to(p_x[0] == 0)  # 시작 x 위치
 opti.subject_to(p_y[0] == 0)  # 시작 y 위치
-opti.subject_to(yaw[0] == 0)  # 시작 yaw
+opti.subject_to(yaw[0] == 1)  # 시작 yaw
 opti.subject_to(v_x[0] == 0)  # 시작 x 속도
 opti.subject_to(v_y[0] == 0)  # 시작 y 속도
 opti.subject_to(omega[0] == 0)  # 시작 yaw rate
 
-opti.subject_to(p_x[-1] == 3)  # 목표 x 위치
+opti.subject_to(p_x[-1] == 7)  # 목표 x 위치
 opti.subject_to(p_y[-1] == 0)  # 목표 y 위치
 
 # ---- 기타 제약 조건  ----------
 opti.subject_to(T >= 0)  # 시간은 양수여야 함
+opti.subject_to(p_x >= 0)  # x 위치는 양수여야 함
 
 # ---- 초기 값 설정 ----
 opti.set_initial(p_x, np.linspace(0, 3, N+1))
