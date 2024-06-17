@@ -87,7 +87,7 @@ def set_initial_values(opti, X, U, T):
 # ---- 후처리 및 결과 시각화 함수 ----
 def plot_results(sol, p_x, p_y, U, x_c, y_c, x_l, y_l, x_r, y_r, N):
     plt.figure()
-    plt.plot(sol.value(p_x), sol.value(p_y), label="trajectory")
+    plt.plot(sol.value(p_x), sol.value(p_y), "b",label="trajectory")
     plt.xlabel("x")
     plt.ylabel("y")
     plt.legend()
