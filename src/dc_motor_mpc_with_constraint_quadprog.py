@@ -1,93 +1,148 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import quadprog
 
-# 시스템 파라미터
-dt = 0.1  # 시간 간격
-T = 20  # 예측 지평선
-N = int(T / dt)  # 시간 스텝 수
-Q = np.diag([1.0, 1.0, 0.1, 0.1])  # 상태 가중치
-R = np.diag([0.1, 0.1])  # 제어 입력 가중치
+# System matrices
+A = np.array([[0.9048, 0], [0.0952, 1]])
+B = np.array([[0.0952], [0.0048]])
+C = np.array([[0, 1]])
 
-# 차량 모델 (간단한 kinematic model)
-def vehicle_model(x, u, dt):
-    x_next = np.zeros_like(x)
-    x_next[0] = x[0] + dt * x[2] * np.cos(x[3])
-    x_next[1] = x[1] + dt * x[2] * np.sin(x[3])
-    x_next[2] = x[2] + dt * u[0]
-    x_next[3] = x[3] + dt * u[1]
-    return x_next
+# 예측 지평과 제어 지평
+Np = 60
+Nc = 5
 
-# 목표 궤적 생성
-ref_traj = np.zeros((N, 4))
-for t in range(N):
-    ref_traj[t, 0] = 10.0 * np.sin(0.1 * t)
-    ref_traj[t, 1] = 10.0 * np.cos(0.1 * t)
-    ref_traj[t, 2] = 1.0
-    ref_traj[t, 3] = 0.1 * t
+# 제어 가중치 행렬
+R = 1 * np.eye(Nc)
 
-# MPC 비용 함수 행렬 생성
-def create_cost_matrices(Q, R, N):
-    Q_bar = np.kron(np.eye(N), Q)
-    R_bar = np.kron(np.eye(N), R)
-    return Q_bar, R_bar
+# 참조 신호
+referenceSignal = 2 * np.ones((Np, 1))
 
-Q_bar, R_bar = create_cost_matrices(Q, R, N)
-
-# 구속 조건 행렬 생성
-def create_constraint_matrices(N, x0):
-    G = np.zeros((4 * N, 4 * N))
-    E = np.zeros((4 * N, 4))
-    for i in range(N):
-        if i == 0:
-            G[4*i:4*i+4, 4*i:4*i+4] = np.eye(4)
-            E[4*i:4*i+4, :] = np.eye(4)
-        else:
-            G[4*i:4*i+4, 4*(i-1):4*(i-1)+4] = -np.eye(4)
-            G[4*i:4*i+4, 4*i:4*i+4] = np.eye(4)
-    E = E[4:, :]
-    return G, E @ x0
-
-G, h = create_constraint_matrices(N, np.zeros(4))
-
-# QP 문제 설정
-def solve_mpc(x0, ref_traj, Q_bar, R_bar, G, h):
-    H = 2 * np.block([
-        [Q_bar, np.zeros((4 * N, 2 * N))],
-        [np.zeros((2 * N, 4 * N)), R_bar]
-    ])
-    f = np.zeros(4 * N + 2 * N)
-    for i in range(N):
-        f[4*i:4*i+4] = -2 * Q_bar[4*i:4*i+4, 4*i:4*i+4] @ ref_traj[i]
-    G_new = np.block([
-        [G, np.zeros((G.shape[0], 2 * N))],
-        [np.zeros((2 * N, G.shape[1])), np.eye(2 * N)]
-    ])
-    h_new = np.hstack([h, np.zeros(2 * N)])
-    H = np.vstack([np.hstack([H, G_new.T]), np.hstack([G_new, np.zeros((G_new.shape[0], G_new.shape[0]))])])
-    f = np.hstack([f, h_new])
-    bounds = np.hstack([np.zeros(4 * N + 2 * N), np.zeros(G_new.shape[0])])
-    
-    solution = quadprog.solve_qp(H, f, np.zeros((0, 0)), np.zeros(0), bounds, bounds)
-    return solution[0][:4*N].reshape(N, 4)
 
 # 초기 상태
-x0 = np.array([0.0, 0.0, 1.0, 0.0])
+x0 = np.array([[0], [0]])
+u0 = 0
 
-# MPC로 궤적 추적
-state_traj = [x0]
-for t in range(N):
-    u_opt = solve_mpc(state_traj[-1], ref_traj[t:], Q_bar, R_bar, G, h)
-    x_next = vehicle_model(state_traj[-1], u_opt[0], dt)
-    state_traj.append(x_next)
 
-state_traj = np.array(state_traj)
+# 예측 모델 생성
+def get_prediction_matrices(A, B, C, Np, Nc):
+    F = np.vstack([C @ np.linalg.matrix_power(A, i) for i in range(1, Np + 1)])
+    Phi = np.zeros((Np, Nc))
+    for i in range(Np):
+        for j in range(Nc):
+            if i >= j:
+                Phi[i, j] = (C @ np.linalg.matrix_power(A, i - j) @ B).item()
+    return F, Phi
 
-# 결과 시각화
-plt.figure()
-plt.plot(ref_traj[:, 0], ref_traj[:, 1], 'r--', label='Reference Trajectory')
-plt.plot(state_traj[:, 0], state_traj[:, 1], 'b-', label='MPC Trajectory')
-plt.xlabel('X')
-plt.ylabel('Y')
+
+def hildreth_qp(E, F, M, gamma, max_iter=1000, tol=1e-6):
+
+    # Compute H and K matrices
+    E_inv = np.linalg.pinv(E)
+    H = M @ E_inv @ M.T
+    K = (gamma + M @ E_inv @ F)
+
+    # Initialize
+    H_row=np.shape(H)[0]
+    H_col=np.shape(H)[1]
+    n=gamma.shape[0]
+    
+    lamb = np.zeros(n).reshape(-1, 1)
+    w = np.zeros(n).reshape(-1, 1)
+
+    # Iterate to update lambda
+    for m in range(max_iter):
+        lamb_old = lamb.copy()
+        
+        for i in range(n):
+            sum1=np.zeros((1,1))
+            sum2=np.zeros((1,1))
+            
+            for j in range(i):
+                sum1+=H[i,j]*lamb[j]
+            for j in range(i+1,n):
+                sum2+=H[i,j]*lamb_old[j]
+            w[i]=(-sum1-sum2-K[i])/H[i,i]
+            lamb[i]=max(w[i],0)
+            
+        # Check for convergence
+        if np.linalg.norm(lamb - lamb_old) < tol:
+            break
+
+    # Compute the solution x
+    x = -E_inv @ (F + M.T @ lamb)
+
+    return x
+
+
+# 시뮬레이션 수행
+x = x0
+temp_x = x0
+u_k = u0
+x_Aug = np.vstack([x0, C @ x0])
+A_Aug = np.block([[A, np.zeros((2, 1))], [C @ A, np.eye(1)]])
+B_Aug = np.vstack([B, C @ B])
+C_Aug = np.hstack([C, np.ones((1, 1))])
+x_list = []
+y_list = []
+u_list = []
+delta_u_list=[]
+delta_U = np.array([[0]])
+
+
+for k in range(100):
+
+    temp_x = x
+    u_k = u_k + delta_U[0]
+    x = A @ x + B * u_k
+    delta_x = x - temp_x
+    x_Aug = np.vstack([delta_x, C @ x])
+
+    # 예측 행렬 계산
+    F, Phi = get_prediction_matrices(A_Aug, B_Aug, C_Aug, Np, Nc)
+
+    # QP로 풀어낼 문제 (제약조건 없을 때)
+    # delta_U = np.linalg.inv(Phi.T @ Phi + R) @ Phi.T @ (r - F @ x_Aug)
+
+    # Hildreth's QP 문제로 변환 (제약조건 추가)
+    E = Phi.T @ Phi + R
+    f = -Phi.T @ (referenceSignal - F @ x_Aug)
+
+    # 0<=u<=0.6 , -0.2<=delta_u<=0.2 np.vstack(u, delta_u) 제약조건 설정
+    U_min, U_max = -0.3, 0.5
+    delta_U_min, delta_U_max = -0.1, 0.2
+
+    # 제약조건
+    # M = np.vstack((np.ones(Nc), -np.ones(Nc), np.ones(Nc), -np.ones(Nc)))
+    M=np.zeros((4,Nc))
+    M[0,0]=1
+    M[1,0]=-1
+    M[2,0]=1
+    M[3,0]=-1
+    
+    gamma = np.array([[U_max-u_k[0]], [-U_min+u_k[0]], [delta_U_max], [-delta_U_min]])
+    delta_U = hildreth_qp(E, f, M, gamma)
+    # 기록 저장
+    x_list.append(x)
+    y_list.append(C_Aug @ x_Aug)
+    u_list.append(u_k)
+    delta_u_list.append(delta_U[0])
+
+
+# 결과 플로팅
+x_val_1 = [x[0].item() for x in x_list]
+x_val_2 = [x[1].item() for x in x_list]
+u_val = [u.item() for u in u_list]
+y_val = [y.item() for y in y_list]
+delta_u_val = [delta_u.item() for delta_u in delta_u_list]
+
+
+plt.plot(x_val_1, label="x1")
+plt.plot(x_val_2, label="x2")
+plt.plot(y_val, label="y")
+plt.legend()
+plt.show()
+
+
+plt.plot(u_val, label="u")
+plt.plot(delta_u_val, label="delta_u")
 plt.legend()
 plt.show()
