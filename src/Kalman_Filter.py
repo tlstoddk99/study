@@ -25,7 +25,7 @@ def init_matrix():
 def init_vector(dt):
     x = np.array([10, 30])
     x_hat = np.array([60, 0])
-    u = np.array([-9.81 * dt * dt])
+    u = np.array([0])
     z = np.array([0])
     v = np.array([0])
     w = np.array([0, 0])
